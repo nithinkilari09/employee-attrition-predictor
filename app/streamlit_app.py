@@ -15,18 +15,73 @@ st.set_page_config(
 # Load model and artifacts
 @st.cache_resource
 def load_model():
+    import sys
+    import os
     base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    with open(os.path.join(base_dir, 'models', 'attrition_model.pkl'), 'rb') as f:
-        model = pickle.load(f)
-    with open(os.path.join(base_dir, 'models', 'feature_names.pkl'), 'rb') as f:
-        features = pickle.load(f)
-    with open(os.path.join(base_dir, 'models', 'median_values.pkl'), 'rb') as f:
-        medians = pickle.load(f)
-    with open(os.path.join(base_dir, 'models', 'best_threshold.pkl'), 'rb') as f:
-        threshold = pickle.load(f)
-    return model, features, medians, threshold
+    sys.path.append(os.path.join(base_dir, 'src'))
+    
+    from preprocess import load_and_preprocess
+    from sklearn.model_selection import train_test_split
+    from sklearn.metrics import precision_recall_curve
+    from xgboost import XGBClassifier
+    import numpy as np
 
-model, feature_names, median_values, best_threshold = load_model()
+    # Load and preprocess
+    data_path = os.path.join(base_dir, 'data', 'raw', 'attrition.csv')
+    X, y, df = load_and_preprocess(data_path)
+
+    # Feature engineering
+    def add_features(df):
+        df = df.copy()
+        df['IncomePerYear'] = df['MonthlyIncome'] / (df['TotalWorkingYears'] + 1)
+        df['SatisfactionScore'] = (
+            df['JobSatisfaction'] +
+            df['EnvironmentSatisfaction'] +
+            df['WorkLifeBalance']
+        ) / 3
+        df['RiskScore'] = (
+            df['OverTime'] *
+            (1 / df['JobSatisfaction']) *
+            df['DistanceFromHome']
+        )
+        return df
+
+    X = add_features(X)
+
+    # Train/test split
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, y, test_size=0.2, random_state=42, stratify=y
+    )
+
+    # scale_pos_weight
+    scale = (y_train == 0).sum() / (y_train == 1).sum()
+
+    # Train XGBoost
+    model = XGBClassifier(
+        n_estimators=300,
+        max_depth=4,
+        learning_rate=0.05,
+        subsample=0.8,
+        colsample_bytree=0.8,
+        scale_pos_weight=scale,
+        random_state=42,
+        eval_metric='logloss',
+        verbosity=0
+    )
+    model.fit(X_train, y_train)
+
+    # Threshold tuning
+    y_prob = model.predict_proba(X_test)[:, 1]
+    from sklearn.metrics import precision_recall_curve
+    precisions, recalls, thresholds = precision_recall_curve(y_test, y_prob)
+    f1_scores = 2 * (precisions * recalls) / (precisions + recalls + 1e-8)
+    best_threshold = thresholds[np.argmax(f1_scores)]
+
+    # Median values
+    median_values = X_train.median().to_dict()
+    feature_names = X_train.columns.tolist()
+
+    return model, feature_names, median_values, float(best_threshold)
 
 # Feature engineering - must match train.py exactly
 def add_features(df):
