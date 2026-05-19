@@ -4,7 +4,7 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 
-st.set_page_config(page_title="Employee Attrition Predictor", layout="wide")
+st.set_page_config(page_title="Employee Attrition Predictor", page_icon="👥", layout="wide")
 
 @st.cache_resource
 def load_model():
@@ -51,30 +51,11 @@ def load_model():
     return model, X_train.columns.tolist(), X_train.median().to_dict(), best_threshold
 
 
-# ── Load model ──
+# Load model
 model, feature_names, median_values, best_threshold = load_model()
 
 
-# ── Sidebar ──
-st.sidebar.header("Employee Profile")
-age = st.sidebar.slider("Age", 18, 60, 30)
-monthly_income = st.sidebar.number_input("Monthly Income ($)", 1000, 20000, 5000, step=500)
-job_level = st.sidebar.selectbox("Job Level", [1, 2, 3, 4, 5])
-overtime = st.sidebar.selectbox("OverTime", ["Yes", "No"])
-distance_from_home = st.sidebar.slider("Distance From Home (miles)", 1, 30, 5)
-years_at_company = st.sidebar.slider("Years at Company", 0, 40, 3)
-years_in_current_role = st.sidebar.slider("Years in Current Role", 0, 20, 2)
-total_working_years = st.sidebar.slider("Total Working Years", 0, 40, 5)
-num_companies_worked = st.sidebar.slider("Num Companies Worked", 0, 10, 2)
-job_satisfaction = st.sidebar.selectbox("Job Satisfaction (1=Low, 4=High)", [1, 2, 3, 4])
-work_life_balance = st.sidebar.selectbox("Work Life Balance (1=Bad, 4=Best)", [1, 2, 3, 4])
-environment_satisfaction = st.sidebar.selectbox("Environment Satisfaction (1=Low, 4=High)", [1, 2, 3, 4])
-department = st.sidebar.selectbox("Department", ["Sales", "Research & Development", "Human Resources"])
-marital_status = st.sidebar.selectbox("Marital Status", ["Single", "Married", "Divorced"])
-stock_option_level = st.sidebar.selectbox("Stock Option Level", [0, 1, 2, 3])
-
-
-# ── Build input ──
+# Build input
 def build_input():
     input_dict = {col: [median_values.get(col, 0)] for col in feature_names}
     input_dict['Age'] = [age]
@@ -100,16 +81,50 @@ def build_input():
     return df_input[feature_names]
 
 
-# ── Main UI ──
-st.title("Employee Attrition Predictor")
-st.markdown("**Predict whether an employee is likely to leave and understand why.**")
+# UI
+st.title("👥 Employee Attrition Predictor")
+st.markdown("**Predict whether an employee is likely to leave — and understand why.**")
 st.markdown("---")
 
+# Sidebar
+st.sidebar.header("🧑‍💼 Employee Profile")
+age = st.sidebar.slider("Age", 18, 60, 30)
+monthly_income = st.sidebar.number_input("Monthly Income ($)", 1000, 20000, 5000, step=500)
+job_level = st.sidebar.selectbox("Job Level", [1, 2, 3, 4, 5])
+overtime = st.sidebar.selectbox("OverTime", ["Yes", "No"])
+distance_from_home = st.sidebar.slider("Distance From Home (miles)", 1, 30, 5)
+total_working_years = st.sidebar.slider("Total Working Years", 0, 40, 5)
+years_at_company = st.sidebar.slider("Years at Company", 0, 40, 3)
+years_in_current_role = st.sidebar.slider("Years in Current Role", 0, 20, 2)
+num_companies_worked = st.sidebar.slider("Num Companies Worked", 0, 10, 2)
+job_satisfaction = st.sidebar.selectbox("Job Satisfaction (1=Low, 4=High)", [1, 2, 3, 4])
+work_life_balance = st.sidebar.selectbox("Work Life Balance (1=Bad, 4=Best)", [1, 2, 3, 4])
+environment_satisfaction = st.sidebar.selectbox("Environment Satisfaction (1=Low, 4=High)", [1, 2, 3, 4])
+department = st.sidebar.selectbox("Department", ["Sales", "Research & Development", "Human Resources"])
+marital_status = st.sidebar.selectbox("Marital Status", ["Single", "Married", "Divorced"])
+stock_option_level = st.sidebar.selectbox("Stock Option Level", [0, 1, 2, 3])
+
+# Predict button
 col1, col2, col3 = st.columns([1, 1, 1])
 with col2:
-    predict_btn = st.button("Predict Attrition Risk", use_container_width=True)
+    predict_btn = st.button("🔍 Predict Attrition Risk", use_container_width=True)
 
-if predict_btn:
+# Input validation
+validation_errors = []
+if years_in_current_role > years_at_company:
+    validation_errors.append("Years in Current Role cannot exceed Years at Company")
+if years_at_company > total_working_years:
+    validation_errors.append("Years at Company cannot exceed Total Working Years")
+if years_in_current_role > total_working_years:
+    validation_errors.append("Years in Current Role cannot exceed Total Working Years")
+if age < total_working_years + 16:
+    validation_errors.append("Age seems too low for the number of working years")
+
+if validation_errors:
+    for error in validation_errors:
+        st.error(f"⚠️ Invalid input: {error}")
+
+if predict_btn and not validation_errors:
     input_df = build_input()
     prob = model.predict_proba(input_df)[0][1]
 
@@ -118,11 +133,11 @@ if predict_btn:
 
     with col1:
         if prob > 0.55:
-            risk_label, risk_color = "HIGH RISK", "#e74c3c"
+            risk_label, risk_color = "🔴 HIGH RISK", "#e74c3c"
         elif prob > 0.35:
-            risk_label, risk_color = "MEDIUM RISK", "#f39c12"
+            risk_label, risk_color = "🟡 MEDIUM RISK", "#f39c12"
         else:
-            risk_label, risk_color = "LOW RISK", "#2ecc71"
+            risk_label, risk_color = "🟢 LOW RISK", "#2ecc71"
 
         st.markdown(f"""
         <div style='background-color:{risk_color};padding:20px;border-radius:10px;text-align:center;'>
@@ -134,17 +149,17 @@ if predict_btn:
         """, unsafe_allow_html=True)
 
     with col2:
-        st.metric("Monthly Income", f"${monthly_income:,}")
-        st.metric("Years at Company", f"{years_at_company} years")
-        st.metric("Job Level", f"Level {job_level}")
+        st.metric("💵 Monthly Income", f"${monthly_income:,}")
+        st.metric("🏢 Years at Company", f"{years_at_company} years")
+        st.metric("📈 Job Level", f"Level {job_level}")
 
     with col3:
-        st.metric("OverTime", overtime)
-        st.metric("Job Satisfaction", f"{job_satisfaction}/4")
-        st.metric("Work Life Balance", f"{work_life_balance}/4")
+        st.metric("⏰ OverTime", overtime)
+        st.metric("😊 Job Satisfaction", f"{job_satisfaction}/4")
+        st.metric("⚖️ Work Life Balance", f"{work_life_balance}/4")
 
     st.markdown("---")
-    st.subheader("Key Risk Factors")
+    st.subheader("📊 Key Risk Factors")
     risk_factors = []
     if overtime == "Yes": risk_factors.append("Working overtime - 3x higher attrition risk")
     if job_level == 1: risk_factors.append("Entry level - highest attrition group (27%)")
@@ -159,12 +174,12 @@ if predict_btn:
 
     if risk_factors:
         for f in risk_factors:
-            st.warning(f)
+            st.warning(f"⚠️ {f}")
     else:
-        st.success("No major risk factors detected")
+        st.success("✅ No major risk factors detected")
 
     st.markdown("---")
-    st.subheader("Business Impact")
+    st.subheader("💰 Business Impact")
     c1, c2 = st.columns(2)
     with c1:
         st.error(f"Estimated replacement cost: **${monthly_income * 6:,}**")
@@ -172,12 +187,13 @@ if predict_btn:
     with c2:
         st.info(f"Annual salary: **${monthly_income * 12:,}**")
 
-    with st.expander("About this model"):
-        st.markdown("""
+    with st.expander("ℹ️ About this model"):
+        st.markdown(f"""
         - **Algorithm:** XGBoost Classifier
         - **Data:** IBM HR Analytics (1,470 employees)
         - **Features:** 33 including 3 engineered
-        - **Imbalance:** scale_pos_weight (no synthetic data)
+        - **Imbalance handling:** scale_pos_weight (no synthetic data)
+        - **Decision threshold:** {best_threshold:.2f} (tuned for best F1)
         - **ROC-AUC:** 0.77 | Recall: 55% | F1: 0.50
         - **Note:** Dataset is synthetic; real-world results may vary
         """)
