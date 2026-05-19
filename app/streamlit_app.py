@@ -14,35 +14,40 @@ st.set_page_config(
 
 @st.cache_resource
 def load_model():
-    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    sys.path.append(os.path.join(base_dir, 'src'))
-
-    from preprocess import load_and_preprocess
     from sklearn.model_selection import train_test_split
     from sklearn.metrics import precision_recall_curve
+    from sklearn.preprocessing import LabelEncoder
     from xgboost import XGBClassifier
 
-    # Load and preprocess
+    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     data_path = os.path.join(base_dir, 'data', 'raw', 'attrition.csv')
-    X, y, df = load_and_preprocess(data_path)
+
+    # Load and preprocess inline
+    df = pd.read_csv(data_path)
+    df = df.drop(columns=['EmployeeCount', 'Over18', 'StandardHours', 'EmployeeNumber'])
+    df['Attrition'] = df['Attrition'].map({'Yes': 1, 'No': 0})
+
+    cat_cols = df.select_dtypes(include=['object']).columns.tolist()
+    le = LabelEncoder()
+    for col in cat_cols:
+        df[col] = le.fit_transform(df[col].astype(str))
+
+    X = df.drop(columns=['Attrition'])
+    y = df['Attrition']
 
     # Feature engineering
-    def add_feat(df):
-        df = df.copy()
-        df['IncomePerYear'] = df['MonthlyIncome'] / (df['TotalWorkingYears'] + 1)
-        df['SatisfactionScore'] = (
-            df['JobSatisfaction'] +
-            df['EnvironmentSatisfaction'] +
-            df['WorkLifeBalance']
-        ) / 3
-        df['RiskScore'] = (
-            df['OverTime'] *
-            (1 / df['JobSatisfaction']) *
-            df['DistanceFromHome']
-        )
-        return df
-
-    X = add_feat(X)
+    X = X.copy()
+    X['IncomePerYear'] = X['MonthlyIncome'] / (X['TotalWorkingYears'] + 1)
+    X['SatisfactionScore'] = (
+        X['JobSatisfaction'] +
+        X['EnvironmentSatisfaction'] +
+        X['WorkLifeBalance']
+    ) / 3
+    X['RiskScore'] = (
+        X['OverTime'] *
+        (1 / X['JobSatisfaction']) *
+        X['DistanceFromHome']
+    )
 
     X_train, X_test, y_train, y_test = train_test_split(
         X, y, test_size=0.2, random_state=42, stratify=y
@@ -72,11 +77,6 @@ def load_model():
     feature_names = X_train.columns.tolist()
 
     return model, feature_names, median_values, best_threshold
-
-
-# Load everything at top level
-model, feature_names, median_values, best_threshold = load_model()
-
 
 # Feature engineering for prediction - must match training
 def add_features(df):
