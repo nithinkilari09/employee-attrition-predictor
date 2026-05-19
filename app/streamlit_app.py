@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 import os
-import pickle
+import sys
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -8,30 +8,26 @@ import numpy as np
 # Page config
 st.set_page_config(
     page_title="Employee Attrition Predictor",
-    page_icon="👥",
+    page_icon="HR",
     layout="wide"
 )
 
-# Load model and artifacts
 @st.cache_resource
 def load_model():
-    import sys
-    import os
     base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     sys.path.append(os.path.join(base_dir, 'src'))
-    
+
     from preprocess import load_and_preprocess
     from sklearn.model_selection import train_test_split
     from sklearn.metrics import precision_recall_curve
     from xgboost import XGBClassifier
-    import numpy as np
 
     # Load and preprocess
     data_path = os.path.join(base_dir, 'data', 'raw', 'attrition.csv')
     X, y, df = load_and_preprocess(data_path)
 
     # Feature engineering
-    def add_features(df):
+    def add_feat(df):
         df = df.copy()
         df['IncomePerYear'] = df['MonthlyIncome'] / (df['TotalWorkingYears'] + 1)
         df['SatisfactionScore'] = (
@@ -46,17 +42,14 @@ def load_model():
         )
         return df
 
-    X = add_features(X)
+    X = add_feat(X)
 
-    # Train/test split
     X_train, X_test, y_train, y_test = train_test_split(
         X, y, test_size=0.2, random_state=42, stratify=y
     )
 
-    # scale_pos_weight
     scale = (y_train == 0).sum() / (y_train == 1).sum()
 
-    # Train XGBoost
     model = XGBClassifier(
         n_estimators=300,
         max_depth=4,
@@ -70,20 +63,22 @@ def load_model():
     )
     model.fit(X_train, y_train)
 
-    # Threshold tuning
     y_prob = model.predict_proba(X_test)[:, 1]
-    from sklearn.metrics import precision_recall_curve
     precisions, recalls, thresholds = precision_recall_curve(y_test, y_prob)
     f1_scores = 2 * (precisions * recalls) / (precisions + recalls + 1e-8)
-    best_threshold = thresholds[np.argmax(f1_scores)]
+    best_threshold = float(thresholds[np.argmax(f1_scores)])
 
-    # Median values
     median_values = X_train.median().to_dict()
     feature_names = X_train.columns.tolist()
 
-    return model, feature_names, median_values, float(best_threshold)
+    return model, feature_names, median_values, best_threshold
 
-# Feature engineering - must match train.py exactly
+
+# Load everything at top level
+model, feature_names, median_values, best_threshold = load_model()
+
+
+# Feature engineering for prediction - must match training
 def add_features(df):
     df = df.copy()
     df['IncomePerYear'] = df['MonthlyIncome'] / (df['TotalWorkingYears'] + 1)
@@ -98,6 +93,7 @@ def add_features(df):
         df['DistanceFromHome']
     )
     return df
+
 
 # Build input dataframe
 def build_input():
@@ -123,14 +119,15 @@ def build_input():
     df_input = df_input[feature_names]
     return df_input
 
+
 # ── UI ──────────────────────────────────────────────────────────────────────
 
-st.title("👥 Employee Attrition Predictor")
-st.markdown("**Predict whether an employee is likely to leave — and understand why.**")
+st.title("Employee Attrition Predictor")
+st.markdown("**Predict whether an employee is likely to leave and understand why.**")
 st.markdown("---")
 
 # Sidebar
-st.sidebar.header("🧑‍💼 Employee Profile")
+st.sidebar.header("Employee Profile")
 age = st.sidebar.slider("Age", 18, 60, 30)
 monthly_income = st.sidebar.number_input("Monthly Income ($)", 1000, 20000, 5000, step=500)
 job_level = st.sidebar.selectbox("Job Level", [1, 2, 3, 4, 5])
@@ -150,7 +147,7 @@ stock_option_level = st.sidebar.selectbox("Stock Option Level", [0, 1, 2, 3])
 # Predict button
 col1, col2, col3 = st.columns([1, 1, 1])
 with col2:
-    predict_btn = st.button("🔍 Predict Attrition Risk", use_container_width=True)
+    predict_btn = st.button("Predict Attrition Risk", use_container_width=True)
 
 if predict_btn:
     input_df = build_input()
@@ -159,17 +156,16 @@ if predict_btn:
 
     st.markdown("---")
 
-    # Risk Score Display
     col1, col2, col3 = st.columns(3)
     with col1:
         if prob > 0.55:
-            risk_label = "🔴 HIGH RISK"
+            risk_label = "HIGH RISK"
             risk_color = "#e74c3c"
         elif prob > 0.35:
-            risk_label = "🟡 MEDIUM RISK"
+            risk_label = "MEDIUM RISK"
             risk_color = "#f39c12"
         else:
-            risk_label = "🟢 LOW RISK"
+            risk_label = "LOW RISK"
             risk_color = "#2ecc71"
 
         st.markdown(f"""
@@ -182,18 +178,17 @@ if predict_btn:
         """, unsafe_allow_html=True)
 
     with col2:
-        st.metric("💵 Monthly Income", f"${monthly_income:,}")
-        st.metric("🏢 Years at Company", f"{years_at_company} years")
-        st.metric("📈 Job Level", f"Level {job_level}")
+        st.metric("Monthly Income", f"${monthly_income:,}")
+        st.metric("Years at Company", f"{years_at_company} years")
+        st.metric("Job Level", f"Level {job_level}")
 
     with col3:
-        st.metric("⏰ OverTime", overtime)
-        st.metric("😊 Job Satisfaction", f"{job_satisfaction}/4")
-        st.metric("⚖️ Work Life Balance", f"{work_life_balance}/4")
+        st.metric("OverTime", overtime)
+        st.metric("Job Satisfaction", f"{job_satisfaction}/4")
+        st.metric("Work Life Balance", f"{work_life_balance}/4")
 
-    # Key Risk Factors
     st.markdown("---")
-    st.subheader("📊 Key Risk Factors Detected")
+    st.subheader("Key Risk Factors Detected")
     risk_factors = []
     if overtime == "Yes":
         risk_factors.append("Working overtime - 3x higher attrition risk")
@@ -218,13 +213,12 @@ if predict_btn:
 
     if risk_factors:
         for factor in risk_factors:
-            st.warning(f"⚠️ {factor}")
+            st.warning(factor)
     else:
-        st.success("✅ No major risk factors detected for this employee profile")
+        st.success("No major risk factors detected for this employee profile")
 
-    # Business Impact
     st.markdown("---")
-    st.subheader("💰 Estimated Business Impact")
+    st.subheader("Estimated Business Impact")
     col1, col2 = st.columns(2)
     with col1:
         replacement_cost = monthly_income * 6
@@ -235,9 +229,8 @@ if predict_btn:
         st.info(f"Annual salary: **${annual_salary:,}**")
         st.caption(f"Attrition probability: {prob*100:.1f}% | Threshold: {best_threshold:.2f}")
 
-    # Model Info
     st.markdown("---")
-    with st.expander("ℹ️ About this model"):
+    with st.expander("About this model"):
         st.markdown(f"""
         - **Algorithm:** XGBoost Classifier
         - **Training data:** IBM HR Analytics Dataset (1,470 employees)
@@ -248,6 +241,5 @@ if predict_btn:
         - **Limitation:** Dataset is synthetic; real-world performance may vary
         """)
 
-# Footer
 st.markdown("---")
-st.markdown("Built with XGBoost, SHAP and Streamlit | IBM HR Analytics Dataset | Nithin Kilari")
+st.markdown("Built with XGBoost and Streamlit | IBM HR Analytics Dataset | Nithin Kilari")
